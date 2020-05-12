@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/gohornet/hornet/pkg/whiteflag"
 	"github.com/pkg/errors"
 
 	"github.com/iotaledger/hive.go/events"
@@ -54,6 +55,7 @@ type Coordinator struct {
 	powFunc                pow.ProofOfWorkFunc
 	tipselFunc             tipselection.TipSelectionFunc
 	sendBundleFunc         SendBundleFunc
+	whiteFlag              bool
 
 	// internal state
 	state               *State
@@ -67,7 +69,9 @@ type Coordinator struct {
 }
 
 // New creates a new coordinator instance.
-func New(seed trinary.Hash, securityLvl int, merkleTreeDepth int, minWeightMagnitude int, stateFilePath string, milestoneIntervalSec int, checkpointTransactions int, powFunc pow.ProofOfWorkFunc, tipselFunc tipselection.TipSelectionFunc, sendBundleFunc SendBundleFunc) *Coordinator {
+func New(seed trinary.Hash, securityLvl int, merkleTreeDepth int, minWeightMagnitude int, stateFilePath string,
+	milestoneIntervalSec int, checkpointTransactions int, whiteFlag bool,
+	powFunc pow.ProofOfWorkFunc, tipselFunc tipselection.TipSelectionFunc, sendBundleFunc SendBundleFunc) *Coordinator {
 	result := &Coordinator{
 		seed:                   seed,
 		securityLvl:            securityLvl,
@@ -76,6 +80,7 @@ func New(seed trinary.Hash, securityLvl int, merkleTreeDepth int, minWeightMagni
 		stateFilePath:          stateFilePath,
 		milestoneIntervalSec:   milestoneIntervalSec,
 		checkpointTransactions: checkpointTransactions,
+		whiteFlag:              whiteFlag,
 		powFunc:                powFunc,
 		tipselFunc:             tipselFunc,
 		sendBundleFunc:         sendBundleFunc,
@@ -209,7 +214,17 @@ func (coo *Coordinator) issueCheckpoint() error {
 // createAndSendMilestone creates a milestone, sends it to the network and stores a new coordinator state file.
 func (coo *Coordinator) createAndSendMilestone(trunkHash trinary.Hash, branchHash trinary.Hash, newMilestoneIndex milestone.Index) error {
 
-	b, err := createMilestone(coo.seed, newMilestoneIndex, coo.securityLvl, trunkHash, branchHash, coo.minWeightMagnitude, coo.merkleTree, coo.powFunc)
+	// compute merkle tree root
+	var byteEncodedMerkleTreeRootHash []byte
+	if coo.whiteFlag {
+		var err error
+		byteEncodedMerkleTreeRootHash, err = whiteflag.ComputeMerkleTreeRootHash(trunkHash, branchHash, newMilestoneIndex)
+		if err != nil {
+			return err
+		}
+	}
+
+	b, err := createMilestone(coo.seed, newMilestoneIndex, coo.securityLvl, trunkHash, branchHash, coo.minWeightMagnitude, coo.merkleTree, byteEncodedMerkleTreeRootHash, coo.powFunc)
 	if err != nil {
 		return err
 	}
